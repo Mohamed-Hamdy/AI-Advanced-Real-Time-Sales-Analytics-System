@@ -2,7 +2,7 @@
   <div class="dashboard">
     <!-- Header -->
     <div class="dashboard-header">
-      <h1 class="dashboard-title">Sales Analytics Dashboard</h1>
+      <h1 class="dashboard-title">AI Sales Analytics Dashboard</h1>
       <div class="connection-status">
         <div class="status-indicator" :class="{ 'connected': isConnected, 'disconnected': !isConnected }"></div>
         <span class="status-text">{{ isConnected ? 'Connected' : 'Disconnected' }}</span>
