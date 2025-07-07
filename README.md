@@ -32,6 +32,7 @@ This project implements an advanced real-time sales analytics system. It support
   - Custom WebSocket events for updates
   - Charts drawn manually (no charting libraries)
 
+
 ##  API Endpoints
 
 | Method | Endpoint            | Description                                   |
@@ -109,3 +110,15 @@ The system architecture is structured as follows:
   - Requests product promotions and strategy recommendations
   - Adjusts suggestions dynamically based on current weather conditions
 
+## System Requirements
+
+### Backend (Java)
+- Java 21 JDK
+- Maven 3.9+
+- DeepSeek API key
+- MySql DataBase
+  
+### Frontend (JavaScript)
+- Node.js 18.20.8
+- npm 9+ or yarn 1.22+
+- Vite 6.3+
