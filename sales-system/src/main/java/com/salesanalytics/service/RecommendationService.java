@@ -5,194 +5,71 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.salesanalytics.dto.Analytics;
 import com.salesanalytics.dto.Recommendation;
 import com.salesanalytics.dto.TopProduct;
-import com.theokanning.openai.completion.chat.ChatCompletionRequest;
-import com.theokanning.openai.completion.chat.ChatMessage;
-import com.theokanning.openai.completion.chat.ChatMessageRole;
-import com.theokanning.openai.service.OpenAiService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.*;
 
 @Service
 public class RecommendationService {
 
     private final OrderService orderService;
-    private final OpenAiService openAiService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final Random random = new Random();
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final Random random;
+    private final boolean aiEnabled;
+    private final String apiKey;
+    private final String apiUrl;
+    private final String modelName;
 
-    @Value("${recommendation.mode:normal}")
-    private String recommendationMode;
-
+    @Autowired
     public RecommendationService(
             OrderService orderService,
-            @Value("${openai.api.key}") String apiKey) {
+            RestTemplate restTemplate,
+            @Value("${ai.recommendations.enabled:true}") boolean aiEnabled,
+            @Value("${deepseek.api.key}") String apiKey,
+            @Value("${deepseek.api.url:https://api.deepseek.com/v1/chat/completions}") String apiUrl,
+            @Value("${deepseek.model:deepseek-chat}") String modelName) {
         this.orderService = orderService;
-        this.openAiService = new OpenAiService(apiKey, Duration.ofSeconds(30));
+        this.restTemplate = restTemplate;
+        this.objectMapper = new ObjectMapper();
+        this.random = new Random();
+        this.aiEnabled = aiEnabled;
+        this.apiKey = apiKey;
+        this.apiUrl = apiUrl;
+        this.modelName = modelName;
     }
 
     public List<Recommendation> getRecommendations() {
         Analytics analytics = orderService.getAnalytics();
-
-        switch (recommendationMode.toLowerCase()) {
-            case "ai":
-                return getAIRecommendations(analytics);
-            case "hybrid":
-                List<Recommendation> hybrid = new ArrayList<>(getRuleBasedRecommendations(analytics));
-                hybrid.addAll(getAIRecommendations(analytics));
-                return hybrid;
-            case "normal":
-            default:
-                return getRuleBasedRecommendations(analytics);
-        }
-    }
-
-    /* ========================== RULE-BASED ========================== */
-
-    private List<Recommendation> getRuleBasedRecommendations(Analytics analytics) {
-        List<Recommendation> recommendations = new ArrayList<>();
-        recommendations.addAll(generateProductRecommendations(analytics.getTopProducts()));
-        recommendations.addAll(generateRevenueRecommendations(analytics));
-        recommendations.addAll(generateSeasonalRecommendations());
-        return recommendations;
-    }
-
-    private List<Recommendation> generateProductRecommendations(List<TopProduct> topProducts) {
-        List<Recommendation> recommendations = new ArrayList<>();
-
-        if (!topProducts.isEmpty()) {
-            TopProduct topProduct = topProducts.get(0);
-
-            if (topProduct.getPercentage() > 30) {
-                recommendations.add(new Recommendation(
-                        "1",
-                        "Promote " + topProduct.getName(),
-                        topProduct.getName() + " is showing strong sales momentum with " +
-                                String.format("%.1f", topProduct.getPercentage()) +
-                                "% of total revenue. Consider a flash sale to boost revenue further.",
-                        "promotion",
-                        "high",
-                        "Expected 25% increase in " + topProduct.getName() + " sales"
-                ));
+        
+        if (aiEnabled) {
+            try {
+                return getDeepSeekRecommendations(analytics);
+            } catch (Exception e) {
+                // Fallback to business rules if AI fails
+                return generateFallbackRecommendations(analytics);
             }
-
-            if (topProducts.size() > 1) {
-                TopProduct secondProduct = topProducts.get(1);
-                recommendations.add(new Recommendation(
-                        "2",
-                        "Bundle Opportunity",
-                        "Create a bundle offer combining " + topProduct.getName() + " and " +
-                                secondProduct.getName() + " to increase average order value.",
-                        "pricing",
-                        "medium",
-                        "Potential 15% increase in average order value"
-                ));
-            }
+        } else {
+            return generateFallbackRecommendations(analytics);
         }
-
-        return recommendations;
     }
 
-    private List<Recommendation> generateRevenueRecommendations(Analytics analytics) {
-        List<Recommendation> recommendations = new ArrayList<>();
-
-        if (analytics.getRevenueChange() < 0) {
-            recommendations.add(new Recommendation(
-                    "3",
-                    "Revenue Recovery Strategy",
-                    "Revenue has decreased by " + String.format("%.1f", Math.abs(analytics.getRevenueChange())) +
-                            "%. Consider implementing promotional campaigns or discounts.",
-                    "promotion",
-                    "high",
-                    "Expected 20% revenue recovery within next hour"
-            ));
-        } else if (analytics.getRevenueChange() > 50) {
-            recommendations.add(new Recommendation(
-                    "4",
-                    "Capitalize on Momentum",
-                    "Revenue is surging with " + String.format("%.1f", analytics.getRevenueChange()) +
-                            "% growth. Consider increasing inventory for high-demand products.",
-                    "inventory",
-                    "medium",
-                    "Prevent stockouts and maintain growth trajectory"
-            ));
-        }
-
-        return recommendations;
-    }
-
-    private List<Recommendation> generateSeasonalRecommendations() {
-        List<Recommendation> recommendations = new ArrayList<>();
-        String[] weatherConditions = {"hot", "cold", "rainy", "sunny"};
-        String weather = weatherConditions[random.nextInt(weatherConditions.length)];
-
-        switch (weather) {
-            case "hot":
-                recommendations.add(new Recommendation(
-                        "5",
-                        "Hot Weather Promotion",
-                        "Current weather conditions favor promoting cooling products and summer accessories.",
-                        "seasonal",
-                        "medium",
-                        "Potential 20% boost in seasonal product sales"
-                ));
-                break;
-            case "cold":
-                recommendations.add(new Recommendation(
-                        "6",
-                        "Cold Weather Strategy",
-                        "Weather conditions suggest promoting warm beverages and winter accessories.",
-                        "seasonal",
-                        "medium",
-                        "Expected 18% increase in winter product sales"
-                ));
-                break;
-            case "rainy":
-                recommendations.add(new Recommendation(
-                        "7",
-                        "Rainy Day Specials",
-                        "Rainy weather creates opportunities for indoor entertainment and comfort products.",
-                        "seasonal",
-                        "low",
-                        "Potential 12% boost in indoor product categories"
-                ));
-                break;
-            default:
-                recommendations.add(new Recommendation(
-                        "8",
-                        "Optimize Product Mix",
-                        "Current conditions are ideal for promoting outdoor and recreational products.",
-                        "seasonal",
-                        "low",
-                        "Expected 10% increase in outdoor product sales"
-                ));
-        }
-
-        return recommendations;
-    }
-
-    /* ========================== AI-BASED ========================== */
-
-    private List<Recommendation> getAIRecommendations(Analytics analytics) {
-        try {
-            String prompt = createPromptFromAnalytics(analytics);
-            String aiResponse = getAIResponse(prompt);
-            return parseRecommendations(aiResponse);
-        } catch (Exception e) {
-            System.err.println("Error getting AI recommendations: " + e.getMessage());
-            return new ArrayList<>();
-        }
+    private List<Recommendation> getDeepSeekRecommendations(Analytics analytics) {
+        String prompt = createPromptFromAnalytics(analytics);
+        String aiResponse = getDeepSeekResponse(prompt);
+        return parseRecommendations(aiResponse);
     }
 
     private String createPromptFromAnalytics(Analytics analytics) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("As an e-commerce sales analytics AI, generate 3 data-driven product recommendations in JSON format ")
-              .append("with fields: id, title, description, category, priority, expectedOutcome. ")
-              .append("Here is the data:\n")
+              .append("with these exact fields: id, title, description, category, priority, expectedOutcome. ")
+              .append("Here is the sales data:\n")
               .append(String.format("- Current revenue: $%.2f\n", analytics.getTotalRevenue()))
               .append(String.format("- Revenue change: %.1f%%\n", analytics.getRevenueChange()))
               .append("- Top products:\n");
@@ -201,42 +78,100 @@ public class RecommendationService {
             prompt.append(String.format("  - %s: %.1f%% of revenue\n", product.getName(), product.getPercentage()));
         }
 
+        prompt.append("\nRespond ONLY with valid JSON array containing recommendation objects.");
         return prompt.toString();
     }
 
-    private String getAIResponse(String prompt) {
-        ChatMessage message = new ChatMessage(ChatMessageRole.USER.value(), prompt);
+    private String getDeepSeekResponse(String prompt) {
+        if (!aiEnabled) {
+            throw new IllegalStateException("AI service is disabled");
+        }
 
-        ChatCompletionRequest request = ChatCompletionRequest.builder()
-                .model("gpt-4")
-                .messages(List.of(message))
-                .temperature(0.7)
-                .maxTokens(500)
-                .build();
+        // Prepare request headers
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + apiKey);
 
-        return openAiService.createChatCompletion(request)
-                .getChoices()
-                .get(0)
-                .getMessage()
-                .getContent();
+        // Prepare request body
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", modelName);
+        requestBody.put("messages", List.of(
+            Map.of("role", "user", "content", prompt)
+        ));
+        requestBody.put("temperature", 0.7);
+        requestBody.put("max_tokens", 1000);
+
+        // Make the API call
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, request, String.class);
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("DeepSeek API request failed: " + response.getStatusCode());
+        }
+
+        return response.getBody();
     }
 
+    @SuppressWarnings("unchecked")
     private List<Recommendation> parseRecommendations(String jsonResponse) {
         try {
-            return objectMapper.readValue(jsonResponse, new TypeReference<List<Recommendation>>() {});
+            // First extract the content from DeepSeek's response structure
+            Map<String, Object> responseMap = objectMapper.readValue(jsonResponse, 
+                new TypeReference<Map<String, Object>>() {});
+            
+            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+            Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+            String content = (String) message.get("content");
+            
+            // Then parse the actual recommendations
+            return objectMapper.readValue(content, new TypeReference<List<Recommendation>>() {});
         } catch (Exception e) {
-            System.err.println("Failed to parse AI JSON response: " + e.getMessage());
-            // Fallback: add raw response
+            System.err.println("Failed to parse DeepSeek response: " + e.getMessage());
+            
+            // Fallback: return the raw response as a recommendation
             List<Recommendation> fallback = new ArrayList<>();
             fallback.add(new Recommendation(
-                    "ai-fallback",
-                    "AI Recommendation",
-                    jsonResponse,
-                    "ai",
-                    "high",
-                    "Improved sales performance"
+                "deepseek-fallback",
+                "AI Analysis",
+                jsonResponse,
+                "ai",
+                "high",
+                "Enhanced decision making"
             ));
             return fallback;
         }
+    }
+
+    private List<Recommendation> generateFallbackRecommendations(Analytics analytics) {
+        // Implement your existing business rule recommendations here
+        List<Recommendation> recommendations = new ArrayList<>();
+        
+        // Add your product-based recommendations
+        if (!analytics.getTopProducts().isEmpty()) {
+            TopProduct topProduct = analytics.getTopProducts().get(0);
+            recommendations.add(new Recommendation(
+                "1",
+                "Promote " + topProduct.getName(),
+                topProduct.getName() + " is performing well with " + 
+                String.format("%.1f", topProduct.getPercentage()) + "% of revenue",
+                "promotion",
+                "high",
+                "Increase sales of top product"
+            ));
+        }
+        
+        // Add revenue-based recommendations
+        if (analytics.getRevenueChange() < 0) {
+            recommendations.add(new Recommendation(
+                "2",
+                "Revenue Recovery",
+                "Revenue decreased by " + String.format("%.1f", Math.abs(analytics.getRevenueChange())) + "%",
+                "strategy",
+                "high",
+                "Stabilize revenue"
+            ));
+        }
+        
+        return recommendations;
     }
 }
