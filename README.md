@@ -4,6 +4,8 @@
 
 This project implements an advanced real-time sales analytics system. It supports order management, live revenue tracking, and intelligent product recommendations using AI systems like ChatGPT/Gemini. The system is built with a focus on manual implementation of real-time features and data visualization, ensuring minimal reliance on prebuilt frameworks.
 
+<img src="https://raw.githubusercontent.com/Mohamed-Hamdy/AI-Advanced-Real-Time-Sales-Analytics-System/refs/heads/master/images/Peoject%20preview.png">
+
 ##  Features
 
 - **Order Management**
