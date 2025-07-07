@@ -1,9 +1,8 @@
-package com.analytics.salessystem.config;
+package com.salesanalytics.config;
 
 import org.hibernate.boot.model.FunctionContributions;
 import org.hibernate.dialect.DatabaseVersion;
 import org.hibernate.dialect.Dialect;
-import org.hibernate.dialect.identity.IdentityColumnSupport;
 import org.hibernate.engine.jdbc.env.spi.NameQualifierSupport;
 import org.hibernate.query.sqm.function.SqmFunctionRegistry;
 import org.hibernate.type.StandardBasicTypes; 
